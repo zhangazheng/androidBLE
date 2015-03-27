@@ -1,0 +1,28 @@
+# Java  class files
+*.class
+ 
+# generated files
+/bin
+bin/
+gen/
+classes/
+gen-external-apklibs/
+ 
+# maven output folder
+target
+
+proguard/
+# Eclipse project files
+.metadata
+.settings
+
+*.tmp
+*.class
+ehthumbs.db  
+
+# Windows files
+Thumbs.db
+
+
+# Other source repository archive directories (protects when importing
+*.classpath
