@@ -2,6 +2,7 @@ package org.fitark.edrive1;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -10,6 +11,7 @@ import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.Context;
@@ -17,6 +19,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Message;
+import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
@@ -24,6 +28,7 @@ public class MainActivity extends Activity {
 	private BluetoothAdapter mBluetoothAdapter;
 	private final static int REQUEST_ENABLE_BT = 2001;
 	private BluetoothDevice mDevice;
+	private TextView tvMsg;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -35,6 +40,7 @@ public class MainActivity extends Activity {
 			Toast.makeText(this, "当前手机不支持ble", Toast.LENGTH_SHORT).show();
 			finish();
 		}
+		tvMsg = (TextView) this.findViewById(R.id.msg);
 
 		final BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
 		mBluetoothAdapter = bluetoothManager.getAdapter();
@@ -42,6 +48,8 @@ public class MainActivity extends Activity {
 			Intent enableBtIntent = new Intent(
 					BluetoothAdapter.ACTION_REQUEST_ENABLE);
 			startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
+		} else {
+			scanLeDevice(true);
 		}
 	}
 
@@ -63,7 +71,18 @@ public class MainActivity extends Activity {
 	}
 
 	private boolean mScanning;
-	private Handler mHandler;
+	private Handler mHandler =  new Handler(){
+		public void handleMessage(Message msg) {
+			switch (msg.what) {
+			case 0:
+				tvMsg.setText(tvMsg.getText()+"\n"+msg.obj.toString());
+				break;
+
+			default:
+				break;
+			}
+		};
+	};
 	// 10秒后停止寻找.
 	private static final long SCAN_PERIOD = 10000;
 
@@ -146,6 +165,9 @@ public class MainActivity extends Activity {
 			if (status == BluetoothGatt.GATT_SUCCESS) {
 				System.out.println("onServicesDiscovered");
 				broadcastUpdate(ACTION_ServicesDiscovered_OVER, status);
+				if (gatt.getServices() == null)
+					return;
+				scanGATTServices(gatt.getServices());
 			}
 		}
 
@@ -161,7 +183,6 @@ public class MainActivity extends Activity {
 		public void onCharacteristicRead(BluetoothGatt gatt,
 				BluetoothGattCharacteristic characteristic, int status) {
 			super.onCharacteristicRead(gatt, characteristic, status);
-
 			if (status == BluetoothGatt.GATT_SUCCESS) {
 				broadcastUpdate(ACTION_READ_OVER, characteristic.getValue());
 			}
@@ -172,6 +193,10 @@ public class MainActivity extends Activity {
 				BluetoothGattCharacteristic characteristic) {
 			super.onCharacteristicChanged(gatt, characteristic);
 			broadcastUpdate(ACTION_DATA_CHANGE, characteristic.getValue());
+			Message msg = new Message();
+			msg.what = 0;
+			msg.obj = new String(characteristic.getValue());
+			mHandler.sendMessage(msg);
 		}
 
 		@Override
@@ -187,6 +212,25 @@ public class MainActivity extends Activity {
 	private void broadcastUpdate(final String action) {
 		final Intent intent = new Intent(action);
 		sendBroadcast(intent);
+	}
+
+	protected void scanGATTServices(List<BluetoothGattService> gattServices) {
+		for (BluetoothGattService gattService : gattServices) {
+			String uuid = gattService.getUuid().toString();
+			List<BluetoothGattCharacteristic> gattCharacteristics = gattService
+					.getCharacteristics();
+			ArrayList<BluetoothGattCharacteristic> charas = new ArrayList<BluetoothGattCharacteristic>();
+			for (BluetoothGattCharacteristic gattCharacteristic : gattCharacteristics) {
+				mBluetoothGatt.setCharacteristicNotification(
+						gattCharacteristic, true);
+				BluetoothGattDescriptor descriptor = gattCharacteristic
+						.getDescriptor(UUID
+								.fromString("00002900-0000-1000-8000-00805f9b34fb"));
+				descriptor
+						.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+				mBluetoothGatt.writeDescriptor(descriptor);
+			}
+		}
 	}
 
 	// 发送广播消息
